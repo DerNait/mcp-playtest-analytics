@@ -2,116 +2,148 @@
 
 An MCP server that turns raw playtesting telemetry into answers about game design.
 
-Point it at a folder of session files from a playtested game and ask things like
-*which room was hardest*, *which weapon did players actually use*, *where did they
-die*, or *did the change between two builds help*. The server does the arithmetic
-and returns aggregates; the language model interprets them.
+Point it at a folder of session files from an instrumented game and ask which
+room was hardest, which weapon players actually used, where they died, or whether
+the change between two builds helped. The server does the arithmetic and returns
+aggregates; the language model interprets them.
 
 Built for **CC3067 Redes**, Universidad del Valle de Guatemala.
 
-## Why this is not a file reader
+## Quick start
 
-**No tool ever returns a full session.** A real session file is around 1 MB,
-mostly position sampling — roughly 200-300k tokens if handed to a model whole.
-That fills the context window, costs real money, and leaves the model doing
-arithmetic by hand, which is what it is worst at.
-
-Instead, each tool computes and returns the result. `get_player_path`
-downsamples. `get_events` requires an event-type filter and enforces a hard cap.
-**The tool thinks; the model interprets and explains.**
-
-## Status
-
-🚧 **In development.** Phase 0: project setup. Tool implementations land in
-phase 3, along with example sessions and full per-tool documentation.
-
-## Planned tools
-
-**Discovery**
-
-| Tool | Returns |
-|---|---|
-| `list_sessions` | Session index: id, date, duration, result, versions, deaths |
-| `get_session_summary` | The full computed summary for one session |
-
-**Single-session analysis**
-
-| Tool | Returns |
-|---|---|
-| `get_room_statistics` | Attempts, deaths, time, damage, lowest health, stalls |
-| `get_weapon_statistics` | Time equipped, accuracy, kills per weapon |
-| `get_enemy_statistics` | What killed the player, and how often |
-| `get_death_locations` | Coordinates and cause — feeds a heatmap |
-| `get_damage_locations` | Same, for damage taken |
-| `get_player_path` | Route through the level, always downsampled |
-| `get_stuck_moments` | Where the player stopped progressing, and what was pending |
-
-**Detection**
-
-| Tool | Finds |
-|---|---|
-| `detect_difficult_rooms` | Rooms weighted by deaths, then damage, time, attempts |
-| `detect_easy_rooms` | The opposite problem, which almost nobody measures |
-| `detect_repeated_failures` | Gaps, puzzles and waves that fail over and over |
-| `detect_unused_mechanics` | Mechanics players never touched |
-
-**Comparison**
-
-| Tool | Compares |
-|---|---|
-| `compare_sessions` | Two sessions, side by side |
-| `compare_versions` | Sessions aggregated by game version |
-
-**Escape hatch**
-
-| Tool | Notes |
-|---|---|
-| `get_events` | Raw timeline. Event-type filter required, hard result cap |
-
-## Input data
-
-The server reads JSON session files produced by an instrumented game. The data
-contract covers session metadata, a computed summary, and a timeline of typed
-events carrying world-space positions, room ids and game/level versions.
-
-**Example sessions ship with this repository** so it can be run without the game
-that produced them — see `examples/sessions/`.
-
-> Example sessions and the full schema documentation land in phase 3.
-
-## Requirements
-
-- Python 3.11+
-
-No third-party dependencies: the MCP protocol layer is implemented directly over
-JSON-RPC 2.0 on stdio.
-
-## Installation
+**With Docker — nothing else to install:**
 
 ```bash
-git clone <this repository>
-cd mcp-playtest-analytics
-python -m mcp_playtest_analytics
+docker build -t mcp-playtest-analytics .
+docker run -i --rm mcp-playtest-analytics
 ```
 
-> Verified installation instructions land in phase 3, tested from a clean folder.
+That runs against the four real playtest sessions bundled in
+`examples/sessions/`, so it works immediately after cloning.
 
-## Usage with an MCP host
+**With Python 3.11+ instead:**
 
-Add it to your host's server configuration as a stdio server:
+```bash
+PYTHONPATH=src python -m mcp_playtest_analytics
+```
+
+There are **no third-party dependencies**. The MCP protocol is implemented
+directly over JSON-RPC 2.0, so there is nothing to install.
+
+## Adding it to an MCP host
+
+Any host works — the protocol is independent of the language model behind it.
 
 ```jsonc
 {
   "playtest": {
-    "transport": "stdio",
-    "command": "python",
-    "args": ["-m", "mcp_playtest_analytics"]
+    "command": "docker",
+    "args": ["run", "-i", "--rm", "mcp-playtest-analytics"]
   }
 }
 ```
 
-By default it reads the bundled example sessions, so it works immediately after
-cloning.
+`-i` is required: MCP over stdio needs stdin held open. Do **not** pass `-t`; a
+TTY mangles the newline-delimited JSON stream.
+
+Native equivalent:
+
+```jsonc
+{
+  "playtest": {
+    "command": "python",
+    "args": ["-m", "mcp_playtest_analytics"],
+    "env": { "PYTHONPATH": "/absolute/path/to/mcp-playtest-analytics/src" }
+  }
+}
+```
+
+## Using your own sessions
+
+Mount a folder read-only at `/data`:
+
+```bash
+docker run -i --rm -v "/path/to/PlaytestSessions:/data:ro" mcp-playtest-analytics
+```
+
+Or, running natively, `--sessions /path/to/folder` or the
+`PLAYTEST_SESSIONS_DIR` environment variable. If the configured folder holds no
+session files, the server falls back to the bundled examples.
+
+## Tools
+
+### Discovery
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `list_sessions` | `limit`, `game_version`, `level_version`, `include_automated` | One compact row per session: id, player, date, duration, versions, result, deaths, rooms completed |
+| `get_session_summary` | `session_id` | The full computed summary: totals, per-room, per-weapon and per-enemy rows, unused mechanics |
+
+### Single-session analysis
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `get_room_statistics` | `session_id`, `room_id` | Attempts, deaths, time, clear time, damage, lowest health, time in danger |
+| `get_weapon_statistics` | `session_id` | Time equipped, attacks, hits, accuracy, damage, kills, average hit distance |
+| `get_enemy_statistics` | `session_id` | Spawned, killed, damage dealt to the player, player kills, average time to kill |
+| `get_death_locations` | `session_id` (optional) | World coordinates, room, killer and weapon held, per death |
+| `get_player_path` | `session_id`, `room_id`, `max_points` | The route taken, **always downsampled**, capped at 200 points |
+
+### Detection
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `detect_difficult_rooms` | `game_version` | Rooms ranked by trouble caused, weighting deaths above damage, retries and time |
+| `detect_unused_mechanics` | `game_version` | Mechanics nobody used, and first-use timings for the rest |
+
+### Comparison
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `compare_versions` | `version_a`, `version_b` | Both versions pooled: duration, deaths, damage, accuracy, weapon usage share — with a warning when the sample is too thin to conclude anything |
+
+## Design
+
+**No tool ever returns a full session.** A real session file is around 1.5 MB,
+mostly position sampling — roughly 200-300k tokens if handed to a model whole.
+That fills the context window, costs real money, and leaves the model doing
+arithmetic by hand, which is what it is worst at.
+
+So the server keeps two layers: an **index** built from each file's header and
+computed summary, which answers most questions without opening a single
+timeline; and **on-demand loading** of the event array for the questions that
+genuinely need positions or raw events.
+
+**Automated runs are excluded by default.** The corpus these tools were built
+against holds 130 files, of which only 4 are real playtests: 55 are automated
+test-harness runs and the rest are launches that lasted under a second.
+Averaging them together produces confident statistics about nothing. The
+discriminator is semantic — harness runs spawn a marker enemy — because file
+size points the wrong way: harness runs produce the *largest* files in the
+corpus.
+
+**Small samples are reported as small.** `compare_versions` attaches a caution
+when either side has fewer than three sessions, so the model says "anecdote"
+instead of "finding".
+
+## Example
+
+```
+> Compare version 0.2.0 with 0.3.0. What changed in weapon usage and accuracy?
+
+  [tool] compare_versions(version_a='0.2.0', version_b='0.3.0')
+
+  Sword usage went from 15.7% to 22.4%, accuracy from 0.34 to 0.58.
+  But there are only 2 playtests for 0.2.0 and 1 for 0.3.0, so this is
+  an anecdote rather than evidence...
+```
+
+## Input format
+
+Sessions are JSON files with a header (ids, versions, duration, result), a
+computed `summary`, and an `events` array of typed events carrying world-space
+positions, room ids and version stamps. The four files in `examples/sessions/`
+are real recorded playtests and serve as the reference for the format.
 
 ## License
 
