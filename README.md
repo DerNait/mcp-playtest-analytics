@@ -87,20 +87,31 @@ session files, the server falls back to the bundled examples.
 | `get_weapon_statistics` | `session_id` | Time equipped, attacks, hits, accuracy, damage, kills, average hit distance |
 | `get_enemy_statistics` | `session_id` | Spawned, killed, damage dealt to the player, player kills, average time to kill |
 | `get_death_locations` | `session_id` (optional) | World coordinates, room, killer and weapon held, per death |
+| `get_damage_locations` | `session_id`, `min_amount` | Where damage was taken, plus a per-room total |
 | `get_player_path` | `session_id`, `room_id`, `max_points` | The route taken, **always downsampled**, capped at 200 points |
+| `get_stuck_moments` | `session_id` (optional) | Where a player stopped progressing, for how long, and what the room was still waiting for |
 
 ### Detection
 
 | Tool | Arguments | Returns |
 |---|---|---|
 | `detect_difficult_rooms` | `game_version` | Rooms ranked by trouble caused, weighting deaths above damage, retries and time |
+| `detect_easy_rooms` | `game_version` | Rooms that cost the player nothing, with never-visited rooms listed separately |
+| `detect_repeated_failures` | `session_id` (optional) | Gaps, puzzles, switch sequences and timed gates that failed more than once |
 | `detect_unused_mechanics` | `game_version` | Mechanics nobody used, and first-use timings for the rest |
 
 ### Comparison
 
 | Tool | Arguments | Returns |
 |---|---|---|
+| `compare_sessions` | `session_a`, `session_b` | Two sessions side by side, including per-room time deltas |
 | `compare_versions` | `version_a`, `version_b` | Both versions pooled: duration, deaths, damage, accuracy, weapon usage share — with a warning when the sample is too thin to conclude anything |
+
+### Escape hatch
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `get_events` | `session_id`, **`event_types` (required)**, `room`, `from_second`, `to_second`, `limit` | Raw timeline events. The type filter is mandatory and results are capped at 100 — a session holds thousands of events, and returning them whole is what every other tool exists to avoid |
 
 ## Design
 
@@ -125,6 +136,16 @@ corpus.
 **Small samples are reported as small.** `compare_versions` attaches a caution
 when either side has fewer than three sessions, so the model says "anecdote"
 instead of "finding".
+
+## Tests
+
+```bash
+PYTHONPATH=src python -m pytest tests/ -q
+```
+
+They cover the harness/playtest discrimination, which is the logic most worth
+pinning down: the obvious heuristic is backwards, and getting it wrong makes
+every statistic the server reports confidently meaningless.
 
 ## Example
 

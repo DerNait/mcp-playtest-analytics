@@ -19,6 +19,7 @@ from pathlib import Path
 from .data.loader import SessionStore
 from .protocol import Server, log
 from .tools import register
+from .tools_extra import register_extra
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_SESSIONS = REPO_ROOT / "examples" / "sessions"
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
 
     server = Server()
     register(server, store)
+    register_extra(server, store)
     server.run()
     return 0
 
