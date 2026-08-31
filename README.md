@@ -18,8 +18,10 @@ docker build -t mcp-playtest-analytics .
 docker run -i --rm mcp-playtest-analytics
 ```
 
-That runs against the four real playtest sessions bundled in
-`examples/sessions/`, so it works immediately after cloning.
+That runs against the eleven real playtest sessions bundled in
+`examples/sessions/`, so it works immediately after cloning. They span three
+game versions and include runs with deaths and runs without, which is what
+makes the detection and comparison tools show something on a fresh clone.
 
 **With Python 3.11+ instead:**
 
@@ -163,8 +165,8 @@ every statistic the server reports confidently meaningless.
 
 Sessions are JSON files with a header (ids, versions, duration, result), a
 computed `summary`, and an `events` array of typed events carrying world-space
-positions, room ids and version stamps. The four files in `examples/sessions/`
-are real recorded playtests and serve as the reference for the format.
+positions, room ids and version stamps. The files in `examples/sessions/` are
+real recorded playtests and serve as the reference for the format.
 
 ## License
 
