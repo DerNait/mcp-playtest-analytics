@@ -157,10 +157,17 @@ class TestRobustness:
 class TestBundledExamples:
     """The examples ship with the repository, so they are part of its contract."""
 
-    def test_all_four_are_real_playtests(self):
+    def test_none_of_them_is_a_harness_run(self):
+        """The contract is that every bundled example is a real playtest.
+
+        Not that there are exactly N of them: the count grows whenever someone
+        plays, and a test that pins it just fails on good news. What must hold
+        is that nothing from the automated harness slipped in, since the whole
+        corpus is what the README's numbers are computed from.
+        """
         entries = list(SessionStore(EXAMPLES).entries())
-        assert len(entries) == 4
-        assert all(not entry.automated for entry in entries)
+        assert entries, "the repository ships with no examples"
+        assert [e.session_id for e in entries if e.automated] == []
 
     def test_they_cover_the_versions_the_readme_compares(self):
         versions = {entry.game_version for entry in SessionStore(EXAMPLES).entries()}

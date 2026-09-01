@@ -156,9 +156,10 @@ every statistic the server reports confidently meaningless.
 
   [tool] compare_versions(version_a='0.2.0', version_b='0.3.0')
 
-  Sword usage went from 15.7% to 22.4%, accuracy from 0.34 to 0.58.
-  But there are only 2 playtests for 0.2.0 and 1 for 0.3.0, so this is
-  an anecdote rather than evidence...
+  Sword usage went from 15.7% to 32.1%, accuracy from 0.34 to 0.53,
+  and deaths from 0.0 to 2.62 per run. But there are only 2 playtests
+  for 0.2.0, so treat the comparison as an anecdote rather than
+  evidence...
 ```
 
 ## Input format
@@ -166,7 +167,9 @@ every statistic the server reports confidently meaningless.
 Sessions are JSON files with a header (ids, versions, duration, result), a
 computed `summary`, and an `events` array of typed events carrying world-space
 positions, room ids and version stamps. The files in `examples/sessions/` are
-real recorded playtests and serve as the reference for the format.
+real recorded playtests and serve as the reference for the format: 11 of them,
+across versions 0.1.0, 0.2.0 and 0.3.0, so the server does something useful on a
+fresh clone with no data of your own.
 
 ## License
 

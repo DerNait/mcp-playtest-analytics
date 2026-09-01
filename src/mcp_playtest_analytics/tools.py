@@ -376,12 +376,31 @@ def register(server: Server, store: SessionStore) -> None:
         },
     )
     def compare_versions(args: dict[str, Any]) -> str:
-        a = _version_profile(store, args["version_a"])
-        b = _version_profile(store, args["version_b"])
+        # Declaring an argument required in the schema does not make the caller
+        # send it. Reading it straight out of the dict turns a forgotten
+        # argument into a KeyError, which reaches the client as an internal
+        # error -- indistinguishable from the server being broken, and nothing
+        # a model can recover from. A tool error names the missing argument and
+        # the call can be retried.
+        version_a = _require_text(args, "version_a")
+        version_b = _require_text(args, "version_b")
 
-        payload: dict[str, Any] = {args["version_a"]: a, args["version_b"]: b}
+        a = _version_profile(store, version_a)
+        b = _version_profile(store, version_b)
 
-        thin = [v for v, p in ((args["version_a"], a), (args["version_b"], b))
+        payload: dict[str, Any] = {version_a: a, version_b: b}
+
+        empty = [v for v, p in ((version_a, a), (version_b, b)) if not p["sessions"]]
+        if empty:
+            known = sorted({
+                e.game_version for e in store.entries() if e.game_version
+            })
+            raise ToolError(
+                f"no playtests for {', '.join(empty)}. "
+                f"Known versions: {', '.join(known) or '(none)'}"
+            )
+
+        thin = [v for v, p in ((version_a, a), (version_b, b))
                 if p["sessions"] < 3]
         if thin:
             payload["caution"] = (
@@ -399,6 +418,14 @@ def register(server: Server, store: SessionStore) -> None:
 
 
 # ------------------------------------------------------------------ utilities
+
+def _require_text(args: dict[str, Any], name: str) -> str:
+    """A required string argument, or a tool error naming it."""
+    value = args.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise ToolError(f"{name} is required")
+    return value.strip()
+
 
 def _require(store: SessionStore, args: dict[str, Any]):
     session_id = args.get("session_id")
